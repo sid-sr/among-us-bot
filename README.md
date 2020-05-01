@@ -15,6 +15,7 @@ To contribute/run the bot on your own server:
 * Set ```DISCORD_TOKEN``` and ```DISCORD_GUILD``` in .env-sample and rename the file to .env
 * Run ```python bot.py```
 * If successful, server info and console logging will start on terminal.
+* This can be deployed for free on Heroku.
 
 ## Logs:
 ---
