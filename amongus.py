@@ -4,6 +4,8 @@
 '''
 import discord
 import message_info
+import pickle
+import os
 
 # to return the user name without the #XXXX part at the end
 def format_user_name(user_name):
@@ -12,27 +14,42 @@ def format_user_name(user_name):
 
 class AmongUsData(object):
 	'''Class to store among us data of players.'''
-	def __init__(self, user_list, exc=None):
+	def __init__(self, user_list, save_file, load_data=False):
 		'''Initialise all scores in a dictionary (data_dict) to 0.'''
 		self.data_dict = {}
+		self.filename = save_file
+		
+		# if the file is empty
 		for user in user_list:
 			self.data_dict[user] = [0, 0]
-		if exc in self.data_dict:
-			del self.data_dict[exc]
+
+		# if data is already available
+		if load_data and save_file in os.listdir() and os.stat(save_file).st_size > 0:
+			data_file = open(save_file, 'rb')
+			self.data_dict = pickle.load(data_file)
+			data_file.close()
 
 	def add_point(self, user_name, win=True):
 		'''Add a point to the given user_name'''
 		if user_name not in self.data_dict.keys():
 			raise Exception(f'User {user_name} not found!')
 		else:
+			data_file = open(self.filename, 'wb')
 			self.data_dict[user_name][0] += int(win)
 			self.data_dict[user_name][1] += 1
+			pickle.dump(self.data_dict, data_file)
+			data_file.close()
 
 	def reset_points(self):
 		'''Reset all points to 0 for all users.
 		'''
 		for user in self.data_dict:
 			self.data_dict[user] = [0, 0]
+
+	def add_user(self, user_name):
+		'''Add a user to the data dictionary
+		'''
+		self.data_dict[user_name] = [0, 0]
 
 	def get_points(self, user_name):
 		'''Return points for the given user_name
@@ -47,7 +64,9 @@ class AmongUsData(object):
 		'''Return a list of (user_name, point pair, ratio) triplets.'''
 		return [[x[0], x[1], (x[1][0]/x[1][1] if x[1][1] else 0)] for x in self.data_dict.items()]
 
+
 class AmongUsClient(discord.Client):
+	
 	'''Subclass to handle events without decorators'''
 	def __init__(self, guild):
 		super().__init__()
@@ -56,14 +75,17 @@ class AmongUsClient(discord.Client):
 		self.GUILD = guild
 
 	async def on_ready(self):
-		server = discord.utils.get(self.guilds, name=self.GUILD)		
-		self.au_data = AmongUsData([format_user_name(name) for name in self.users], exc=format_user_name(self.user))
+		server = discord.utils.get(self.guilds, name=self.GUILD)	
+		human_users = list(filter(lambda x: not x.bot, self.users))
+
+		self.au_data = AmongUsData([user.name for user in human_users], save_file='data.pkl', load_data=True)
 		print(f'Running on server: {server.name}\nServer ID: {server.id}')
 		print(f'{self.user} has connected to Discord!')
 		print('\nLog: ')
 
 	async def on_member_join(self, member):
 	    await member.create_dm()
+	    self.au_data.add_user(member.name)
 	    await member.dm_channel.send(f'Hi {member.name}, welcome to the Among Us Discord server!')
 
 	async def on_message(self, message):
@@ -79,14 +101,17 @@ class AmongUsClient(discord.Client):
 
 			if msg == message_info.help_com:
 				await message.channel.send(message_info.help_message.format(user_name))
+			
 			elif msg == message_info.clear_com:
 				self.au_data.reset_points()
 				await message.channel.send(message_info.reset_msg)					
+			
 			elif msg == message_info.map_com:
 				file = discord.File("./img/map.jpg", filename="map.jpg")
 				embed = discord.Embed()
 				embed.set_image(url="attachment://map.jpg")
 				await message.channel.send(content=message_info.map_msg, file=file, embed=embed)	
+
 			elif msg == message_info.lb_com:
 				res = ''
 				lb_data = self.au_data.get_leaderboard_data()
@@ -100,6 +125,7 @@ class AmongUsClient(discord.Client):
 				res+='```'
 
 				await message.channel.send(message_info.leaderboard + res)
+			
 			else:
 				win, msg_len = 0, 0
 				if msg[:message_info.len_ap_loss] == message_info.loss_com:
